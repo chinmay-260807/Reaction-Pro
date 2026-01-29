@@ -79,17 +79,28 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error("Critical: Initialization error", e);
-      // We don't setAppError here to allow the app to function even if storage fails
     }
   }, []);
+
+  const getApiKey = (): string | undefined => {
+    try {
+      // Safe check for process.env in various bundler/browser environments
+      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
+      }
+    } catch (e) {
+      console.warn("API Key access check failed:", e);
+    }
+    return undefined;
+  };
 
   const fetchNews = async () => {
     setIsNewsLoading(true);
     setNewsError(null);
     try {
-      const apiKey = process.env.API_KEY;
+      const apiKey = getApiKey();
       if (!apiKey) {
-        throw new Error("Missing API configuration. Please set the API_KEY environment variable.");
+        throw new Error("Missing API_KEY environment variable in Vercel settings.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -122,7 +133,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Pre-calculate delays when difficulty changes
   useEffect(() => {
     let minDelay = 1500;
     let maxRandom = 1500;
@@ -148,7 +158,6 @@ const App: React.FC = () => {
     setDelayPool(pool);
   }, [difficulty]);
 
-  // Update localStorage whenever bestTime changes
   useEffect(() => {
     if (bestTime !== null) {
       localStorage.setItem(STORAGE_KEY_BEST, bestTime.toString());
@@ -233,7 +242,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Global Error Fallback UI
   if (appError) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center">
@@ -253,7 +261,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Initial Loading UI
   if (introStage === 0) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -271,7 +278,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950 text-white selection:bg-indigo-500/30 overflow-x-hidden">
-      {/* Header with Intro Animation */}
       <header className={`
         p-6 flex items-center justify-between border-b border-white/5 bg-zinc-900/50 backdrop-blur-md z-10
         transition-all duration-700 ease-out transform
@@ -323,8 +329,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 relative flex flex-col items-center justify-start overflow-y-auto overflow-x-hidden gap-8 px-6 py-12 no-scrollbar">
-        
-        {/* Main Reaction Area */}
         <div className={`
           w-full flex justify-center transition-all duration-700 ease-out transform
           ${introStage >= 2 ? 'opacity-100' : 'opacity-0'}
@@ -341,7 +345,6 @@ const App: React.FC = () => {
           />
         </div>
         
-        {/* Settings & Info Area */}
         <div className={`
           w-full max-w-2xl flex flex-col gap-8 transition-all duration-700 ease-out transform
           ${introStage >= 3 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
