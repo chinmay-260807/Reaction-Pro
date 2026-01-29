@@ -3,20 +3,13 @@ import { GameState, ReactionAttempt, Difficulty, SoundPack, Settings, ThemeColor
 import ReactionArea from './components/ReactionArea';
 import Stats from './components/Stats';
 import SettingsModal from './components/SettingsModal';
-import NewsPanel from './components/NewsPanel';
 import { Zap, Volume2, VolumeX, Settings2, Sliders, Trash2, Palette, AlertTriangle, RefreshCcw, Loader2 } from 'lucide-react';
 import { audioManager } from './utils/audio';
-import { GoogleGenAI } from "@google/genai";
 
 const STORAGE_KEY_BEST = 'reaction-pro-best-time';
 const STORAGE_KEY_SETTINGS = 'reaction-pro-settings';
 const STORAGE_KEY_COLOR = 'reaction-pro-theme-color';
 const DELAY_POOL_SIZE = 10;
-
-interface NewsItem {
-  title: string;
-  url: string;
-}
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
@@ -30,10 +23,7 @@ const App: React.FC = () => {
   const [delayPool, setDelayPool] = useState<number[]>([]);
   const [introStage, setIntroStage] = useState(0);
   
-  // News & Error States
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [isNewsLoading, setIsNewsLoading] = useState(false);
-  const [newsError, setNewsError] = useState<string | null>(null);
+  // Error States
   const [appError, setAppError] = useState<string | null>(null);
   
   const [settings, setSettings] = useState<Settings>({
@@ -82,57 +72,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const getApiKey = (): string | undefined => {
-    try {
-      // Safe check for process.env in various bundler/browser environments
-      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-        return process.env.API_KEY;
-      }
-    } catch (e) {
-      console.warn("API Key access check failed:", e);
-    }
-    return undefined;
-  };
-
-  const fetchNews = async () => {
-    setIsNewsLoading(true);
-    setNewsError(null);
-    try {
-      const apiKey = getApiKey();
-      if (!apiKey) {
-        throw new Error("Missing API_KEY environment variable in Vercel settings.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "List exactly 3 latest technology or gaming news headlines from today. Keep the titles concise. Provide links for each.",
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
-
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      const lines = response.text.split('\n').filter(line => line.trim().length > 10);
-      
-      const newsItems: NewsItem[] = lines.slice(0, 3).map((line, idx) => {
-        const chunk = chunks[idx];
-        return {
-          title: line.replace(/^\d+\.\s*/, '').replace(/\[.*\]/, '').trim(),
-          url: chunk?.web?.uri || 'https://news.google.com'
-        };
-      });
-
-      if (newsItems.length === 0) throw new Error("No headlines found.");
-      setNews(newsItems);
-    } catch (error: any) {
-      console.error("Failed to fetch news:", error);
-      setNewsError(error.message || "Unable to sync with news servers.");
-    } finally {
-      setIsNewsLoading(false);
-    }
-  };
-
+  // Pre-calculate delays when difficulty changes
   useEffect(() => {
     let minDelay = 1500;
     let maxRandom = 1500;
@@ -158,6 +98,7 @@ const App: React.FC = () => {
     setDelayPool(pool);
   }, [difficulty]);
 
+  // Update localStorage whenever bestTime changes
   useEffect(() => {
     if (bestTime !== null) {
       localStorage.setItem(STORAGE_KEY_BEST, bestTime.toString());
@@ -412,13 +353,6 @@ const App: React.FC = () => {
           )}
 
           {history.length > 0 && <Stats history={history} bestTime={bestTime} />}
-          
-          <NewsPanel 
-            news={news} 
-            isLoading={isNewsLoading} 
-            onFetch={fetchNews} 
-            error={newsError}
-          />
         </div>
       </main>
 
