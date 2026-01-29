@@ -4,7 +4,7 @@ import ReactionArea from './components/ReactionArea';
 import Stats from './components/Stats';
 import SettingsModal from './components/SettingsModal';
 import NewsPanel from './components/NewsPanel';
-import { Zap, Volume2, VolumeX, Settings2, Sliders, Trash2, Palette } from 'lucide-react';
+import { Zap, Volume2, VolumeX, Settings2, Sliders, Trash2, Palette, AlertTriangle, RefreshCcw, Loader2 } from 'lucide-react';
 import { audioManager } from './utils/audio';
 import { GoogleGenAI } from "@google/genai";
 
@@ -30,9 +30,11 @@ const App: React.FC = () => {
   const [delayPool, setDelayPool] = useState<number[]>([]);
   const [introStage, setIntroStage] = useState(0);
   
-  // News State
+  // News & Error States
   const [news, setNews] = useState<NewsItem[]>([]);
   const [isNewsLoading, setIsNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [appError, setAppError] = useState<string | null>(null);
   
   const [settings, setSettings] = useState<Settings>({
     volume: 0.5,
@@ -56,34 +58,41 @@ const App: React.FC = () => {
 
   // Load state from localStorage on mount
   useEffect(() => {
-    const savedBest = localStorage.getItem(STORAGE_KEY_BEST);
-    if (savedBest) {
-      const parsed = parseInt(savedBest, 10);
-      if (!isNaN(parsed)) setBestTime(parsed);
-    }
+    try {
+      const savedBest = localStorage.getItem(STORAGE_KEY_BEST);
+      if (savedBest) {
+        const parsed = parseInt(savedBest, 10);
+        if (!isNaN(parsed)) setBestTime(parsed);
+      }
 
-    const savedColor = localStorage.getItem(STORAGE_KEY_COLOR) as ThemeColor;
-    if (savedColor && Object.values(ThemeColor).includes(savedColor)) {
-      setThemeColor(savedColor);
-    }
+      const savedColor = localStorage.getItem(STORAGE_KEY_COLOR) as ThemeColor;
+      if (savedColor && Object.values(ThemeColor).includes(savedColor)) {
+        setThemeColor(savedColor);
+      }
 
-    const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    if (savedSettings) {
-      try {
+      const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
         setSettings(parsed);
         audioManager.setVolume(parsed.volume);
         audioManager.setSoundPack(parsed.soundPack);
-      } catch (e) {
-        console.error("Failed to parse settings", e);
       }
+    } catch (e) {
+      console.error("Critical: Initialization error", e);
+      // We don't setAppError here to allow the app to function even if storage fails
     }
   }, []);
 
   const fetchNews = async () => {
     setIsNewsLoading(true);
+    setNewsError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        throw new Error("Missing API configuration. Please set the API_KEY environment variable.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: "List exactly 3 latest technology or gaming news headlines from today. Keep the titles concise. Provide links for each.",
@@ -92,8 +101,6 @@ const App: React.FC = () => {
         },
       });
 
-      // Extract headlines and URLs from the response text and grounding metadata
-      // Since groundingChunks contains the metadata links, we'll try to match them.
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       const lines = response.text.split('\n').filter(line => line.trim().length > 10);
       
@@ -105,9 +112,11 @@ const App: React.FC = () => {
         };
       });
 
+      if (newsItems.length === 0) throw new Error("No headlines found.");
       setNews(newsItems);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch news:", error);
+      setNewsError(error.message || "Unable to sync with news servers.");
     } finally {
       setIsNewsLoading(false);
     }
@@ -176,18 +185,22 @@ const App: React.FC = () => {
 
   const handleStart = useCallback(() => {
     if (isSettingsOpen || introStage < 3) return;
-    audioManager.playStart();
-    setGameState(GameState.WAITING);
-    setCurrentResult(null);
+    try {
+      audioManager.playStart();
+      setGameState(GameState.WAITING);
+      setCurrentResult(null);
 
-    const delay = delayPool.length > 0 
-      ? delayPool[Math.floor(Math.random() * delayPool.length)]
-      : 2000;
+      const delay = delayPool.length > 0 
+        ? delayPool[Math.floor(Math.random() * delayPool.length)]
+        : 2000;
 
-    timerRef.current = setTimeout(() => {
-      setGameState(GameState.ACTIVE);
-      startTimeRef.current = performance.now();
-    }, delay);
+      timerRef.current = setTimeout(() => {
+        setGameState(GameState.ACTIVE);
+        startTimeRef.current = performance.now();
+      }, delay);
+    } catch (e) {
+      setAppError("Engine failure. Please reload.");
+    }
   }, [delayPool, isSettingsOpen, introStage]);
 
   const handleClick = useCallback(() => {
@@ -219,6 +232,35 @@ const App: React.FC = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  // Global Error Fallback UI
+  if (appError) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-6 text-red-500">
+          <AlertTriangle size={32} />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
+        <p className="text-zinc-500 mb-8 max-w-xs">{appError}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-6 py-3 bg-white text-zinc-950 font-bold rounded-xl hover:scale-105 transition-transform"
+        >
+          <RefreshCcw size={18} />
+          Reload Engine
+        </button>
+      </div>
+    );
+  }
+
+  // Initial Loading UI
+  if (introStage === 0) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
 
   const colorConfig = {
     [ThemeColor.INDIGO]: 'bg-indigo-600',
@@ -282,7 +324,7 @@ const App: React.FC = () => {
 
       <main className="flex-1 relative flex flex-col items-center justify-start overflow-y-auto overflow-x-hidden gap-8 px-6 py-12 no-scrollbar">
         
-        {/* Main Reaction Area with Intro Animation and Result Scaling */}
+        {/* Main Reaction Area */}
         <div className={`
           w-full flex justify-center transition-all duration-700 ease-out transform
           ${introStage >= 2 ? 'opacity-100' : 'opacity-0'}
@@ -299,14 +341,13 @@ const App: React.FC = () => {
           />
         </div>
         
-        {/* Settings Area with Intro Animation */}
+        {/* Settings & Info Area */}
         <div className={`
           w-full max-w-2xl flex flex-col gap-8 transition-all duration-700 ease-out transform
           ${introStage >= 3 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
         `}>
           {gameState === GameState.IDLE && (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-10 bg-zinc-900/30 p-8 rounded-3xl border border-white/5 backdrop-blur-sm">
-              {/* Difficulty Selection */}
               <div className="flex flex-col items-center">
                 <div className="flex items-center gap-2 text-zinc-500 mb-3">
                   <Settings2 size={14} />
@@ -336,7 +377,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Color Selection */}
               <div className="flex flex-col items-center">
                 <div className="flex items-center gap-2 text-zinc-500 mb-3">
                   <Palette size={14} />
@@ -374,6 +414,7 @@ const App: React.FC = () => {
             news={news} 
             isLoading={isNewsLoading} 
             onFetch={fetchNews} 
+            error={newsError}
           />
         </div>
       </main>

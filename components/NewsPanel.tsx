@@ -1,5 +1,5 @@
 import React from 'react';
-import { Newspaper, Loader2, ExternalLink, Globe } from 'lucide-react';
+import { Newspaper, Loader2, ExternalLink, Globe, AlertCircle } from 'lucide-react';
 
 interface NewsItem {
   title: string;
@@ -10,9 +10,10 @@ interface NewsPanelProps {
   news: NewsItem[];
   isLoading: boolean;
   onFetch: () => void;
+  error?: string | null;
 }
 
-const NewsPanel: React.FC<NewsPanelProps> = ({ news, isLoading, onFetch }) => {
+const NewsPanel: React.FC<NewsPanelProps> = ({ news, isLoading, onFetch, error }) => {
   return (
     <div className="w-full bg-zinc-900/40 border border-white/5 rounded-3xl p-6 backdrop-blur-xl transition-all duration-500">
       <div className="flex items-center justify-between mb-6">
@@ -49,6 +50,19 @@ const NewsPanel: React.FC<NewsPanelProps> = ({ news, isLoading, onFetch }) => {
               <div className="absolute inset-0 blur-lg bg-indigo-500/20 rounded-full animate-pulse" />
             </div>
             <p className="text-xs font-medium animate-pulse">Consulting global networks...</p>
+          </div>
+        ) : error ? (
+          <div className="py-8 flex flex-col items-center justify-center text-center px-4">
+            <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center mb-3 text-zinc-500">
+              <AlertCircle size={20} />
+            </div>
+            <p className="text-xs text-zinc-400 mb-4">{error}</p>
+            <button 
+              onClick={onFetch}
+              className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         ) : news.length > 0 ? (
           news.map((item, idx) => (
